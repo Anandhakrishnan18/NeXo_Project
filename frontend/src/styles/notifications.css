@@ -1,0 +1,48 @@
+.notifications-header{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  margin-bottom:30px;
+}
+
+.notifications-header h1{
+  font-size:42px;
+  margin-bottom:8px;
+}
+
+.notifications-header p{
+  color:#64748b;
+}
+
+.mark-read-btn{
+  background:white;
+  border:1px solid #d1d5db;
+  padding:14px 24px;
+  border-radius:12px;
+  cursor:pointer;
+  font-weight:600;
+}
+
+.notifications-card{
+  background:white;
+  border:1px solid #e5e7eb;
+  border-radius:20px;
+  height:320px;
+
+  display:flex;
+  justify-content:center;
+  align-items:center;
+}
+
+.notification-empty{
+  text-align:center;
+}
+
+.bell-icon{
+  font-size:42px;
+  margin-bottom:15px;
+}
+
+.notification-empty p{
+  color:#64748b;
+}
