@@ -11,6 +11,13 @@ const meetingChatSocket = (io) => {
     socket.on(
       "join-meeting",
       (meetingId) => {
+
+        console.log(
+  socket.id,
+  "joined meeting",
+  meetingId
+);
+
         socket.join(meetingId);
 
         console.log(

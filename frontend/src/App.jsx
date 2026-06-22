@@ -10,6 +10,7 @@ import Notifications from "./pages/Notifications";
 import Settings from "./pages/Settings";
 import "./styles/layout.css";
 import TeamDetails from "./pages/TeamDetails";
+import MeetingDetails from "./pages/MeetingDetails";
 
 function App() {
   return (
@@ -29,6 +30,10 @@ function App() {
         <Route path="/files" element={<Files />} />
         <Route path="/notifications" element={<Notifications />} />
         <Route path="/settings" element={<Settings />} />
+        <Route
+  path="/meetings/:id"
+  element={<MeetingDetails />}
+/>
 
       </Routes>
     </BrowserRouter>
