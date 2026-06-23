@@ -11,6 +11,7 @@ import Settings from "./pages/Settings";
 import "./styles/layout.css";
 import TeamDetails from "./pages/TeamDetails";
 import MeetingDetails from "./pages/MeetingDetails";
+import VideoCall from "./pages/VideoCall";
 
 function App() {
   return (
@@ -22,6 +23,10 @@ function App() {
 <Route path="/register" element={<Register />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/meetings" element={<Meetings />} />
+        <Route
+  path="/video-call/:id"
+  element={<VideoCall />}
+/>
         <Route path="/teams" element={<Teams />} />
         <Route
   path="/teams/:id"

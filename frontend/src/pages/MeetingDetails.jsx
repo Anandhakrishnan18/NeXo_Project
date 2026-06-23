@@ -3,6 +3,8 @@ import { useParams } from "react-router-dom";
 import { useEffect, useState } from "react";
 import API from "../services/api";
 import socket from "../socket";
+import { useNavigate }
+from "react-router-dom";
 
 function MeetingDetails() {
 
@@ -16,6 +18,8 @@ function MeetingDetails() {
 
   const [newMessage, setNewMessage] =
     useState("");
+  
+  const navigate =useNavigate();
 
 
 useEffect(() => {
@@ -118,6 +122,18 @@ const sendMessage = () => {
 
   return (
     <Layout>
+
+      
+<button
+  className="primary-btn"
+  onClick={() =>
+    navigate(
+      `/video-call/${id}`
+    )
+  }
+>
+  Join Video Call
+</button>
 
       <div
         style={{
