@@ -5,20 +5,32 @@ const fileSchema = new mongoose.Schema(
     teamId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Team",
-      required: true,
     },
-
+    meetingId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Meeting",
+    },
     uploadedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
     },
-
     fileName: {
       type: String,
       required: true,
     },
-
+    originalName: {
+      type: String,
+      required: true,
+    },
+    fileSize: {
+      type: Number,
+      required: true,
+    },
+    mimeType: {
+      type: String,
+      required: true,
+    },
     filePath: {
       type: String,
       required: true,
@@ -29,7 +41,4 @@ const fileSchema = new mongoose.Schema(
   }
 );
 
-module.exports = mongoose.model(
-  "File",
-  fileSchema
-);
+module.exports = mongoose.model("File", fileSchema);
