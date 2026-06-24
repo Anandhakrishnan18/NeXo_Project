@@ -6,20 +6,20 @@ import API from "../services/api";
 import WhiteboardCanvas from "../components/WhiteboardCanvas";
 import "../styles/videocall.css";
 
-const RemoteVideo = ({ peer, peerInfo }) => {
+const RemoteVideo = ({ stream, peerInfo, peerId }) => {
   const videoRef = useRef(null);
 
   useEffect(() => {
-    if (videoRef.current && peer.stream) {
-      videoRef.current.srcObject = peer.stream;
+    if (videoRef.current && stream) {
+      videoRef.current.srcObject = stream;
     }
-  }, [peer.stream]);
+  }, [stream]);
 
   return (
     <div className="video-tile">
       <video ref={videoRef} autoPlay playsInline />
       <div className="video-tile-info">
-        <span>{peerInfo?.username || `User (${peer.id.substring(0, 4)})`}</span>
+        <span>{peerInfo?.username || `User (${peerId.substring(0, 4)})`}</span>
       </div>
     </div>
   );
@@ -39,7 +39,7 @@ function VideoCall() {
 
   // States
   const [meeting, setMeeting] = useState(null);
-  const [peers, setPeers] = useState([]); // List of { id: socketId, stream }
+  const [remoteStreams, setRemoteStreams] = useState({}); // Map of socketId -> MediaStream
   const [participants, setParticipants] = useState([]); // List of active users details
   const [micEnabled, setMicEnabled] = useState(true);
   const [videoEnabled, setVideoEnabled] = useState(true);
@@ -53,13 +53,6 @@ function VideoCall() {
   const [newMessage, setNewMessage] = useState("");
 
   const startCamera = async () => {
-    console.log("=== WEBRTC DIAGNOSTICS ===");
-    console.log("User Agent:", navigator.userAgent);
-    console.log("Is Secure Context:", window.isSecureContext);
-    console.log("typeof navigator.mediaDevices:", typeof navigator.mediaDevices);
-    console.log("navigator.mediaDevices:", navigator.mediaDevices);
-    console.log("==========================");
-
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: true,
@@ -70,16 +63,14 @@ function VideoCall() {
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream;
       }
+      return true;
     } catch (error) {
-      console.error("Error accessing camera/mic:", error);
+      console.error("[WebRTC] Error accessing camera/mic:", error);
       alert(
         "Could not access camera/microphone. You will join the call with audio/video disabled. " +
         "For LAN access, ensure you use a secure context (HTTPS) or configure your browser flags."
       );
-    } finally {
-      // Join the video call channel and supply user metadata - ALWAYS run even if camera fails!
-      socket.emit("join-video-room", { roomId: id, user });
-      socket.emit("join-meeting", id);
+      return false;
     }
   };
 
@@ -87,12 +78,12 @@ function VideoCall() {
     const pc = peerConnections.current[senderId];
     const queue = iceCandidateQueues.current[senderId];
     if (pc && queue && queue.length > 0) {
-      console.log(`Processing ${queue.length} queued ICE candidates for ${senderId}`);
+      console.log(`[WebRTC] Processing ${queue.length} queued ICE candidates for ${senderId}`);
       for (const candidate of queue) {
         try {
           await pc.addIceCandidate(new RTCIceCandidate(candidate));
         } catch (err) {
-          console.error("Failed to add queued ICE candidate:", err);
+          console.error(`[WebRTC] Failed to add queued ICE candidate for ${senderId}:`, err);
         }
       }
       iceCandidateQueues.current[senderId] = [];
@@ -100,13 +91,22 @@ function VideoCall() {
   };
 
   const createPeerConnection = (targetSocketId) => {
-    if (peerConnections.current[targetSocketId]) {
-      console.log(`Cleaning up existing PeerConnection for: ${targetSocketId}`);
-      peerConnections.current[targetSocketId].close();
-      delete peerConnections.current[targetSocketId];
+    let pc = peerConnections.current[targetSocketId];
+    
+    // Glare Prevention: Do not recreate if it already exists and is healthy
+    if (pc) {
+      const state = pc.signalingState;
+      if (state !== "closed") {
+        console.warn(`[WebRTC] PeerConnection already exists for ${targetSocketId} in state: ${state}. Not recreating.`);
+        return pc;
+      } else {
+        console.log(`[WebRTC] Cleaning up closed PeerConnection for: ${targetSocketId}`);
+        delete peerConnections.current[targetSocketId];
+      }
     }
 
-    const pc = new RTCPeerConnection({
+    console.log(`[WebRTC] Peer Connection Created for: ${targetSocketId}`);
+    pc = new RTCPeerConnection({
       iceServers: [
         { urls: "stun:stun.l.google.com:19302" },
         { urls: "stun:stun1.l.google.com:19302" },
@@ -116,6 +116,7 @@ function VideoCall() {
 
     pc.onicecandidate = (event) => {
       if (event.candidate) {
+        console.log(`[WebRTC] ICE Candidate Sent to ${targetSocketId}`);
         socket.emit("ice-candidate", {
           targetId: targetSocketId,
           candidate: event.candidate,
@@ -124,23 +125,24 @@ function VideoCall() {
     };
 
     pc.ontrack = (event) => {
-      console.log(`Received track from: ${targetSocketId}, kind: ${event.track.kind}`);
-      setPeers((prev) => {
-        const existingPeer = prev.find((p) => p.id === targetSocketId);
-        if (existingPeer) {
-          const stream = existingPeer.stream;
-          if (!stream.getTracks().some((t) => t.id === event.track.id)) {
-            stream.addTrack(event.track);
+      console.log(`[WebRTC] Remote Track Received from ${targetSocketId}, kind: ${event.track.kind}`);
+      setRemoteStreams((prev) => {
+        const existingStream = prev[targetSocketId];
+        if (existingStream) {
+          if (!existingStream.getTracks().some((t) => t.id === event.track.id)) {
+            existingStream.addTrack(event.track);
           }
-          // Do not clone the stream. This keeps the media reference stable.
-          // We return a new array to trigger a React re-render.
-          return [...prev];
+          return { ...prev, [targetSocketId]: existingStream }; // Trigger re-render
         } else {
           const newStream = new MediaStream();
           newStream.addTrack(event.track);
-          return [...prev, { id: targetSocketId, stream: newStream }];
+          return { ...prev, [targetSocketId]: newStream };
         }
       });
+    };
+
+    pc.onconnectionstatechange = () => {
+      console.log(`[WebRTC] Connection state with ${targetSocketId}: ${pc.connectionState}`);
     };
 
     if (localStreamRef.current) {
@@ -154,118 +156,140 @@ function VideoCall() {
   };
 
   useEffect(() => {
+    let isMounted = true;
+    let hasJoined = false;
+
     fetchMeetingDetails();
     fetchChatHistory();
-    startCamera();
 
-    // 1. Receives list of existing users details
+    const initCall = async () => {
+      await startCamera();
+      
+      if (isMounted && !hasJoined) {
+        hasJoined = true;
+        console.log(`[WebRTC] Joining video room ${id} as ${user._id}`);
+        socket.emit("join-video-room", { roomId: id, user });
+        socket.emit("join-meeting", id);
+      }
+    };
+
+    initCall();
+
     socket.on("all-users", async (activePeers) => {
-      console.log("Existing users in room:", activePeers);
+      console.log("[WebRTC] Received all-users list:", activePeers.map(p => p.socketId));
       setParticipants(activePeers);
 
       for (const peer of activePeers) {
-        const pc = createPeerConnection(peer.socketId);
         try {
-          const offer = await pc.createOffer();
-          await pc.setLocalDescription(offer);
-          socket.emit("offer", { targetId: peer.socketId, offer });
+          const pc = createPeerConnection(peer.socketId);
+          if (pc.signalingState === "stable") {
+             const offer = await pc.createOffer();
+             await pc.setLocalDescription(offer);
+             console.log(`[WebRTC] Offer Sent to existing user: ${peer.socketId}`);
+             socket.emit("offer", { targetId: peer.socketId, offer });
+          }
         } catch (err) {
-          console.error("Failed to create offer:", err);
+          console.error(`[WebRTC] Failed to create offer for ${peer.socketId}:`, err);
         }
       }
     });
 
-    // 2. Received offer from joiner
     socket.on("offer", async ({ offer, senderId }) => {
-      console.log("Received offer from:", senderId);
+      console.log(`[WebRTC] Offer Received from joiner: ${senderId}`);
       const pc = createPeerConnection(senderId);
       try {
+        if (pc.signalingState !== "stable") {
+           console.warn(`[WebRTC] Ignored offer, signalingState is ${pc.signalingState}`);
+           return;
+        }
         await pc.setRemoteDescription(new RTCSessionDescription(offer));
+        console.log(`[WebRTC] Remote Description Set (Offer) for: ${senderId}`);
+        
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
+        console.log(`[WebRTC] Answer Sent to: ${senderId}`);
         socket.emit("answer", { targetId: senderId, answer });
         
-        // Process queued ICE candidates
         await processQueuedIceCandidates(senderId);
       } catch (err) {
-        console.error("Failed to handle offer:", err);
+        console.error(`[WebRTC] Failed to handle offer from ${senderId}:`, err);
       }
     });
 
-    // 3. Received answer
     socket.on("answer", async ({ answer, senderId }) => {
-      console.log("Received answer from:", senderId);
+      console.log(`[WebRTC] Answer Received from: ${senderId}`);
       const pc = peerConnections.current[senderId];
       if (pc) {
         try {
-          await pc.setRemoteDescription(new RTCSessionDescription(answer));
-          // Process queued ICE candidates
-          await processQueuedIceCandidates(senderId);
+          if (pc.signalingState === "have-local-offer") {
+            await pc.setRemoteDescription(new RTCSessionDescription(answer));
+            console.log(`[WebRTC] Remote Description Set (Answer) for: ${senderId}`);
+            await processQueuedIceCandidates(senderId);
+          } else {
+             console.warn(`[WebRTC] Ignored answer in state: ${pc.signalingState}`);
+          }
         } catch (err) {
-          console.error("Failed to handle answer:", err);
+          console.error(`[WebRTC] Failed to handle answer from ${senderId}:`, err);
         }
       }
     });
 
-    // 4. Received ICE candidate
     socket.on("ice-candidate", async ({ candidate, senderId }) => {
+      console.log(`[WebRTC] ICE Candidate Received from: ${senderId}`);
       const pc = peerConnections.current[senderId];
+      
       if (pc && pc.remoteDescription && pc.remoteDescription.type) {
         try {
           await pc.addIceCandidate(new RTCIceCandidate(candidate));
         } catch (err) {
-          console.error("Failed to add ICE candidate directly:", err);
+          console.error(`[WebRTC] Failed to add ICE candidate for ${senderId}:`, err);
         }
       } else {
-        // Queue it
         if (!iceCandidateQueues.current[senderId]) {
           iceCandidateQueues.current[senderId] = [];
         }
         iceCandidateQueues.current[senderId].push(candidate);
-        console.log(`Queued ICE candidate from ${senderId}`);
+        console.log(`[WebRTC] Queued ICE candidate for ${senderId}`);
       }
     });
 
-    // 5. User joined - update presence metadata
     socket.on("user-joined", (newUser) => {
-      console.log("User presence joined:", newUser);
+      console.log(`[WebRTC] User Joined: ${newUser.socketId} (${newUser.username})`);
       setParticipants((prev) => {
         if (prev.some((p) => p.socketId === newUser.socketId)) return prev;
         return [...prev, newUser];
       });
     });
 
-    // 6. User left
     socket.on("user-left", (socketId) => {
-      console.log("User presence left:", socketId);
+      console.log(`[WebRTC] User presence left: ${socketId}`);
       if (peerConnections.current[socketId]) {
+        console.log(`[WebRTC] Peer Connection Closed: ${socketId}`);
         peerConnections.current[socketId].close();
         delete peerConnections.current[socketId];
       }
       if (iceCandidateQueues.current[socketId]) {
         delete iceCandidateQueues.current[socketId];
       }
-      setPeers((prev) => prev.filter((p) => p.id !== socketId));
+      setRemoteStreams((prev) => {
+        const updated = { ...prev };
+        delete updated[socketId];
+        return updated;
+      });
       setParticipants((prev) => prev.filter((p) => p.socketId !== socketId));
     });
 
-    // 7. Meeting Chat Messages Sync
+    // Chat / Whiteboard events
     socket.on("receive-meeting-message", (message) => {
       setMessages((prev) => [...prev, message]);
       scrollChatToBottom();
     });
-
-    // 8. Workspace View Modes Sync
-    socket.on("whiteboard-mode-enabled", () => {
-      setWorkspaceMode("whiteboard");
-    });
-
-    socket.on("video-mode-enabled", () => {
-      setWorkspaceMode("video");
-    });
+    socket.on("whiteboard-mode-enabled", () => setWorkspaceMode("whiteboard"));
+    socket.on("video-mode-enabled", () => setWorkspaceMode("video"));
 
     return () => {
-      // Cleanups
+      isMounted = false;
+      
       if (localStreamRef.current) {
         localStreamRef.current.getTracks().forEach((track) => track.stop());
       }
@@ -274,6 +298,7 @@ function VideoCall() {
       }
 
       Object.keys(peerConnections.current).forEach((socketId) => {
+        console.log(`[WebRTC] Peer Connection Closed (Cleanup): ${socketId}`);
         peerConnections.current[socketId].close();
       });
       peerConnections.current = {};
@@ -292,7 +317,7 @@ function VideoCall() {
       socket.off("whiteboard-mode-enabled");
       socket.off("video-mode-enabled");
     };
-  }, [id]);
+  }, [id, user._id]);
 
   const fetchMeetingDetails = async () => {
     try {
@@ -411,7 +436,6 @@ function VideoCall() {
     setScreenSharing(false);
   };
 
-  // Sync mode triggers across the room
   const toggleWorkspaceMode = (mode) => {
     setWorkspaceMode(mode);
     if (mode === "whiteboard") {
@@ -426,7 +450,7 @@ function VideoCall() {
   };
 
   const getGridLayoutClass = () => {
-    const total = peers.length + 1;
+    const total = Object.keys(remoteStreams).length + 1;
     if (total === 1) return "video-grid single";
     if (total === 2) return "video-grid double";
     return "video-grid";
@@ -465,9 +489,17 @@ function VideoCall() {
                 </div>
 
                 {/* Remote Videos */}
-                {peers.map((peer) => {
-                  const peerInfo = participants.find((p) => p.socketId === peer.id);
-                  return <RemoteVideo key={peer.id} peer={peer} peerInfo={peerInfo} />;
+                {Object.keys(remoteStreams).map((socketId) => {
+                  const stream = remoteStreams[socketId];
+                  const peerInfo = participants.find((p) => p.socketId === socketId);
+                  return (
+                    <RemoteVideo 
+                      key={socketId} 
+                      peerId={socketId}
+                      stream={stream} 
+                      peerInfo={peerInfo} 
+                    />
+                  );
                 })}
               </div>
             ) : (
