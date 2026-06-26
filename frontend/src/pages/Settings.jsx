@@ -2,7 +2,11 @@ import Layout from "../components/Layout";
 import "../styles/settings.css";
 import { useState, useRef } from "react";
 import API from "../services/api";
-import { User, Shield, Camera, Save } from "lucide-react";
+import { User, Settings as SettingsIcon, Camera, Save } from "lucide-react";
+import ThemeCard from "../components/Settings/ThemeCard";
+import AudioCard from "../components/Settings/AudioCard";
+import VideoCard from "../components/Settings/VideoCard";
+import NotificationCard from "../components/Settings/NotificationCard";
 
 function Settings() {
   const user = JSON.parse(localStorage.getItem("user"));
@@ -14,10 +18,7 @@ function Settings() {
   const [email] = useState(user?.email || "");
   const [avatar, setAvatar] = useState(user?.avatar || "");
 
-  // Security form states
-  const [oldPassword, setOldPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
+
 
   const fileInputRef = useRef(null);
 
@@ -65,26 +66,7 @@ function Settings() {
     }
   };
 
-  const handlePasswordSave = async () => {
-    if (!oldPassword || !newPassword || !confirmPassword) {
-      alert("Please fill in all password fields.");
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      alert("New passwords do not match.");
-      return;
-    }
-    try {
-      await API.put("/auth/password", { oldPassword, newPassword });
-      alert("Password updated successfully!");
-      setOldPassword("");
-      setNewPassword("");
-      setConfirmPassword("");
-    } catch (error) {
-      console.error(error);
-      alert(error.response?.data?.message || "Failed to update password");
-    }
-  };
+
 
   const initials = user?.username?.substring(0, 2).toUpperCase() || "UN";
 
@@ -103,10 +85,10 @@ function Settings() {
           <User size={18} /> Profile Details
         </button>
         <button
-          className={activeTab === "security" ? "active-tab" : ""}
-          onClick={() => setActiveTab("security")}
+          className={activeTab === "settings" ? "active-tab" : ""}
+          onClick={() => setActiveTab("settings")}
         >
-          <Shield size={18} /> Security & Password
+          <SettingsIcon size={18} /> Settings
         </button>
       </div>
 
@@ -191,48 +173,14 @@ function Settings() {
               </button>
             </div>
           </div>
-        ) : (
-          <div>
-            <h3 style={{ marginBottom: "24px", color: "var(--text-main)", fontSize: "18px" }}>Change Password</h3>
-            <div className="settings-form">
-              <div>
-                <label>Current Password</label>
-                <input
-                  type="password"
-                  value={oldPassword}
-                  onChange={(e) => setOldPassword(e.target.value)}
-                  placeholder="••••••••"
-                />
-              </div>
-
-              <div>
-                <label>New Password</label>
-                <input
-                  type="password"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="••••••••"
-                />
-              </div>
-
-              <div>
-                <label>Confirm New Password</label>
-                <input
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="••••••••"
-                />
-              </div>
-            </div>
-
-            <div style={{ overflow: "hidden" }}>
-              <button className="save-btn" onClick={handlePasswordSave}>
-                <Save size={18} /> Update Password
-              </button>
-            </div>
+        ) : activeTab === "settings" ? (
+          <div className="settings-module">
+            <ThemeCard />
+            <AudioCard />
+            <VideoCard />
+            <NotificationCard />
           </div>
-        )}
+        ) : null}
       </div>
     </Layout>
   );

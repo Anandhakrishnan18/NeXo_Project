@@ -297,3 +297,22 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--border-light);
 }
+
+/* Light Theme Overrides */
+[data-theme="light"] {
+  --bg-dark: #f1f5f9;       /* slate-100 */
+  --bg-darker: #f8fafc;     /* slate-50 */
+  --card-bg: #ffffff;       /* white */
+  --card-hover: #e2e8f0;    /* slate-200 */
+  
+  --text-main: #0f172a;     /* slate-900 */
+  --text-muted: #475569;    /* slate-600 */
+  
+  --border: #e2e8f0;        /* slate-200 */
+  --border-light: #cbd5e1;  /* slate-300 */
+}
+
+/* Adjust logo text color in light mode to remain visible but matched */
+[data-theme="light"] .logo {
+  color: var(--text-main);
+}

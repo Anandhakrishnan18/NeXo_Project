@@ -6,7 +6,8 @@ import {
   Bell,
   Settings,
   LogOut,
-  Hexagon
+  Hexagon,
+  User 
 } from "lucide-react";
 
 import {
@@ -109,17 +110,17 @@ function Sidebar() {
           </li>
 
           <li
-            className={
-              location.pathname === "/settings"
-                ? "active"
-                : ""
-            }
-          >
-            <Link to="/settings">
-              <Settings size={18} />
-              Settings
-            </Link>
-          </li>
+  className={
+    location.pathname === "/settings"
+      ? "active"
+      : ""
+  }
+>
+  <Link to="/settings">
+    <User size={18} />
+    Profile
+  </Link>
+</li>
 
         </ul>
       </div>
